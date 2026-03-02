@@ -1,0 +1,157 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Payment</title>
+  <link rel="stylesheet" href="./styles.css" />
+
+  <!-- ✅ ضع Snippet تبع SDK تبعك هنا -->
+   <script async src="https://sdk-29qr.onrender.com/tag/019ca87d-e8cf-770a-8701-c5d479b1af7f.js?v=0.2.2"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1 style="margin:0">Payment</h1>
+        <div class="hint">Select payment method + fill payment form (payment_form)</div>
+      </div>
+      <div class="nav">
+        <a class="btn" href="./checkout.html">Back to Billing</a>
+        <a class="btn" href="./confirm.html">Go to Confirm</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Payment Method</h2>
+
+      <div class="row">
+        <button id="pmCard" class="primary" data-testid="payment_method_card">Pay by Card</button>
+        <button id="pmPaypal" data-testid="payment_method_paypal">PayPal</button>
+        <button id="pmApple" data-elt="payment_method_applepay">Apple Pay (mock)</button>
+      </div>
+
+      <div class="sep"></div>
+
+      <div id="cardBox">
+        <h3>Card Details</h3>
+        <form id="cardForm">
+          <div class="grid">
+            <div>
+              <label>Card Number</label>
+              <input id="cardNumber" value="4242 4242 4242 4242" />
+            </div>
+            <div>
+              <label>Expiry</label>
+              <input id="cardExp" value="12/34" />
+            </div>
+            <div>
+              <label>CVC</label>
+              <input id="cardCvc" value="123" />
+            </div>
+            <div>
+              <label>Name on card</label>
+              <input id="cardName" value="Test User" />
+            </div>
+          </div>
+
+          <div class="row">
+            <button class="primary inline-flex items-center" type="submit" data-elt="pay_now">
+              Pay Now
+            </button>
+            <button type="button" id="btnIntent" data-testid="create_payment_intent">
+              Create Payment Intent (stripe)
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div id="paypalBox" style="display:none">
+        <h3>PayPal</h3>
+        <p class="hint">This calls /api/paypal/payment then “redirects” to confirm.</p>
+        <div class="row">
+          <button id="btnPaypal" class="primary" data-elt="paypal_checkout_button">Continue with PayPal</button>
+        </div>
+      </div>
+
+      <pre id="out"></pre>
+    </div>
+
+    <script type="module">
+      import { save, load, print, postFetch, postXHR } from "./_shared.js";
+
+      const out = document.getElementById("out");
+      const cardBox = document.getElementById("cardBox");
+      const paypalBox = document.getElementById("paypalBox");
+
+      const pmCard = document.getElementById("pmCard");
+      const pmPaypal = document.getElementById("pmPaypal");
+      const pmApple = document.getElementById("pmApple");
+
+      function setPM(pm) {
+        save("lab_pm", pm);
+        cardBox.style.display = pm === "card" ? "block" : "none";
+        paypalBox.style.display = pm === "paypal" ? "block" : "none";
+        pmCard.classList.toggle("primary", pm === "card");
+        pmPaypal.classList.toggle("primary", pm === "paypal");
+        pmApple.classList.toggle("primary", pm === "applepay");
+      }
+
+      pmCard.addEventListener("click", () => setPM("card"));
+      pmPaypal.addEventListener("click", () => setPM("paypal"));
+      pmApple.addEventListener("click", () => setPM("applepay"));
+
+      setPM(load("lab_pm", "card"));
+
+      // Stripe payment intent (fetch) -> URL contains stripe/payment
+      document.getElementById("btnIntent").addEventListener("click", async () => {
+        try {
+          const chk = load("lab_checkout", {});
+          const amount = chk?.planId?.includes("pro") ? 4999 : 1999;
+          const data = await postFetch("./api/stripe/payment_intent", { amount });
+          save("lab_intent", data);
+          print(out, { action: "stripe_payment_intent", ...data });
+        } catch (e) {
+          print(out, e);
+        }
+      });
+
+      // Pay Now -> XHR to /api/payment/confirm (payment/order) then maybe 3DS
+      document.getElementById("cardForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const intent = load("lab_intent", null);
+
+        postXHR("./api/payment/confirm", { paymentIntentId: intent?.paymentIntentId || null }, async (err, resp) => {
+          if (err) return print(out, String(err));
+          print(out, { action: "payment_confirm", ...resp });
+
+          // requires 3DS -> call /api/3ds/challenge (3ds)
+          if (resp?.data?.status === "requires_3ds") {
+            try {
+              const three = await postFetch("./api/3ds/challenge", { paymentIntentId: intent?.paymentIntentId || null });
+              print(out, { ...resp, threeDS: three });
+              save("lab_3ds", three);
+            } catch (e2) {
+              print(out, { threeDS_error: e2 });
+              save("lab_3ds", { ok:false });
+            }
+          }
+
+          location.href = "./confirm.html?pm=card";
+        });
+      });
+
+      // PayPal flow -> fetch /api/paypal/payment then redirect
+      document.getElementById("btnPaypal").addEventListener("click", async () => {
+        try {
+          const data = await postFetch("./api/paypal/payment", { cart: "mock" });
+          print(out, { action: "paypal_payment", ...data });
+          location.href = data.paypalApprovalUrl;
+        } catch (e) {
+          print(out, e);
+        }
+      });
+    </script>
+  </div>
+</body>
+</html>

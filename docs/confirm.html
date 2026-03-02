@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Confirm</title>
+  <link rel="stylesheet" href="./styles.css" />
+
+  <!-- ✅ ضع Snippet تبع SDK تبعك هنا -->
+    <script async src="https://sdk-29qr.onrender.com/tag/019ca87d-e8cf-770a-8701-c5d479b1af7f.js?v=0.2.2"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1 style="margin:0">Confirm & Complete</h1>
+        <div class="hint">Review then confirm payment (payment_confirm)</div>
+      </div>
+      <div class="nav">
+        <a class="btn" href="./payment.html">Back to Payment</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Order Review</h2>
+      <div class="hint" id="summary"></div>
+
+      <div class="sep"></div>
+
+      <div class="row">
+        <button id="btnConfirm" class="primary inline-flex items-center" data-testid="confirm_and_subscribe">
+          Confirm & Subscribe
+        </button>
+        <button id="btnFail" data-elt="simulate_fail">Simulate Failure</button>
+      </div>
+
+      <pre id="out"></pre>
+    </div>
+
+    <script type="module">
+      import { qs, load, print, postFetch } from "./_shared.js";
+
+      const out = document.getElementById("out");
+      const summary = document.getElementById("summary");
+
+      const chk = load("lab_checkout", {});
+      const pm = qs("pm") || load("lab_pm", "card");
+      const intent = load("lab_intent", {});
+      const three = load("lab_3ds", null);
+
+      summary.innerHTML = `
+        <div>Checkout: <span class="badge">${chk.checkoutId || "N/A"}</span></div>
+        <div>Plan: <span class="badge">${chk.planId || "N/A"}</span></div>
+        <div>Payment Method: <span class="badge">${pm}</span></div>
+        <div>PaymentIntent: <span class="badge">${intent.paymentIntentId || "N/A"}</span></div>
+        <div>3DS: <span class="badge">${three ? (three.ok ? "passed" : "failed") : "not_used"}</span></div>
+      `;
+
+      document.getElementById("btnConfirm").addEventListener("click", async () => {
+        try {
+          // /api/order/confirm includes "order"
+          const data = await postFetch("./api/order/confirm", {
+            checkoutId: chk.checkoutId || null,
+            paymentIntentId: intent.paymentIntentId || null,
+            paymentMethod: pm
+          });
+          print(out, { action: "order_confirm", ...data });
+          location.href = "./success.html?order=" + encodeURIComponent(data.orderId);
+        } catch (e) {
+          print(out, e);
+          location.href = "./fail.html";
+        }
+      });
+
+      document.getElementById("btnFail").addEventListener("click", () => {
+        print(out, { simulated: true, reason: "manual_fail_button" });
+        location.href = "./fail.html";
+      });
+    </script>
+  </div>
+</body>
+</html>
